@@ -27,6 +27,18 @@ from icloudpd import constants
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 
+logger = setup_logger()
+
+def checkfile(filename, photo, size):
+    if os.path.isfile(filename):
+        on_disk_size = os.path.getsize(filename)
+        icloud_size = photo.versions[size]['size']
+        if on_disk_size != icloud_size:
+            logger.info('"{}" exists, but is different size than icloud reports'.format(filename)) 
+            return False
+        return True
+    return False
+
 
 @click.command(context_settings=CONTEXT_SETTINGS, options_metavar="<options>")
 # @click.argument(
@@ -215,7 +227,6 @@ def main(
         notification_script,
 ):
     """Download all iCloud photos to a local directory"""
-    logger = setup_logger()
     if only_print_filenames:
         logger.disabled = True
     else:
@@ -388,7 +399,10 @@ def main(
                 os.makedirs(download_dir)
 
             download_size = size
-
+            #logger.debug(json.dumps({
+            #     "master_record": photo._master_record,
+            #     "asset_record": photo._asset_record
+            #}, indent=2))
             try:
                 versions = photo.versions
             except KeyError as ex:
@@ -427,7 +441,7 @@ def main(
             download_path = local_download_path(
                 photo, download_size, download_dir)
 
-            file_exists = os.path.isfile(download_path)
+            file_exists = checkfile(download_path, photo, size)
             if not file_exists and download_size == "original":
                 # Deprecation - We used to download files like IMG_1234-original.jpg,
                 # so we need to check for these.
@@ -435,7 +449,7 @@ def main(
                 original_download_path = ("-%s." % size).join(
                     download_path.rsplit(".", 1)
                 )
-                file_exists = os.path.isfile(original_download_path)
+                file_exists = checkfile(original_download_path, photo, size)
 
             if file_exists:
                 if until_found is not None:
@@ -443,6 +457,7 @@ def main(
                 logger.set_tqdm_description(
                     "%s already exists." % truncate_middle(download_path, 96)
                 )
+
             else:
                 if until_found is not None:
                     consecutive_files_found = 0
@@ -454,7 +469,6 @@ def main(
                     logger.set_tqdm_description(
                         "Downloading %s" %
                         truncated_path)
-
                     download_result = download.download_media(
                         icloud, photo, download_path, download_size
                     )
